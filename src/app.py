@@ -5,22 +5,15 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
 from pathlib import Path
+from typing import Dict
 
-app = FastAPI(title="Mergington High School API",
-              description="API for viewing and signing up for extracurricular activities")
-
-# Mount the static files directory
-current_dir = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
-          "static")), name="static")
-
-# In-memory activity database
-activities = {
+# Default activity database
+DEFAULT_ACTIVITIES = {
     "Chess Club": {
         "description": "Learn strategies and compete in chess tournaments",
         "schedule": "Fridays, 3:30 PM - 5:00 PM",
@@ -77,6 +70,23 @@ activities = {
     }
 }
 
+# In-memory activity database (mutable instance)
+activities = DEFAULT_ACTIVITIES.copy()
+
+
+def get_activities_db() -> Dict:
+    """Dependency injection for activities database"""
+    return activities
+
+
+app = FastAPI(title="Mergington High School API",
+              description="API for viewing and signing up for extracurricular activities")
+
+# Mount the static files directory
+current_dir = Path(__file__).parent
+app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
+          "static")), name="static")
+
 
 @app.get("/")
 def root():
@@ -84,19 +94,19 @@ def root():
 
 
 @app.get("/activities")
-def get_activities():
-    return activities
+def get_all_activities(activities_db: Dict = Depends(get_activities_db)):
+    return activities_db
 
 
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(activity_name: str, email: str, activities_db: Dict = Depends(get_activities_db)):
     """Sign up a student for an activity"""
     # Validate activity exists
-    if activity_name not in activities:
+    if activity_name not in activities_db:
         raise HTTPException(status_code=404, detail="Activity not found")
 
     # Get the specific activity
-    activity = activities[activity_name]
+    activity = activities_db[activity_name]
 
     # Validate student is not already signed up
     if email in activity["participants"]:
@@ -108,14 +118,14 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.post("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, activities_db: Dict = Depends(get_activities_db)):
     """Unregister a student from an activity"""
     # Validate activity exists
-    if activity_name not in activities:
+    if activity_name not in activities_db:
         raise HTTPException(status_code=404, detail="Activity not found")
 
     # Get the specific activity
-    activity = activities[activity_name]
+    activity = activities_db[activity_name]
 
     # Remove student if they exist in the participants list
     if email in activity["participants"]:
